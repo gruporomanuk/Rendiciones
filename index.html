@@ -83,6 +83,18 @@ nav::-webkit-scrollbar{height:0;}
 .rep-head{display:flex;justify-content:space-between;align-items:center;}
 .mob-sec-title{display:none;font-size:13px;font-weight:700;color:var(--text);padding:14px 0 0;letter-spacing:-.2px;}
 
+
+/* ── RESUMEN TABLE ── */
+.res-tbl{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;}
+.res-tbl th{padding:7px 14px;text-align:right;font-size:8px;font-family:var(--mono);color:var(--text3);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg3);}
+.res-tbl th:first-child{text-align:left;}
+.res-tbl td{padding:7px 14px;border-bottom:1px solid var(--bg3);font-family:var(--mono);font-size:11px;text-align:right;}
+.res-tbl td:first-child{text-align:left;font-weight:600;color:var(--text2);}
+.res-tbl tr:last-child td{border-bottom:none;}
+.res-tbl tr:hover td{background:#ffffff04;}
+.res-tbl .total-row td{background:var(--bg3);font-weight:700;color:var(--text);border-top:1px solid var(--border2);}
+.res-tbl .section-head td{background:#1A2235;color:var(--blue);font-size:8px;letter-spacing:.12em;text-transform:uppercase;padding:5px 14px;}
+
 /* ── MOBILE PILL NAV ── */
 #mobile-pill-nav{display:none;overflow-x:auto;gap:6px;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
 #mobile-pill-nav::-webkit-scrollbar{height:0;}
@@ -175,6 +187,7 @@ nav::-webkit-scrollbar{height:0;}
     <button class="tab"    onclick="showTab('rentabilidad',this)">Rentabilidad</button>
     <button class="tab"    onclick="showTab('proyecciones',this)">Proyecciones</button>
     <button class="tab"    onclick="showTab('comparar',this)">Comparar años</button>
+    <button class="tab"    onclick="showTab('resumen',this)">Resumen</button>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding-left:12px;">
       <select id="year-sel" onchange="changeYear(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-family:var(--sans);font-size:12px;outline:none;"></select>
     </div>
@@ -306,6 +319,31 @@ nav::-webkit-scrollbar{height:0;}
       <div class="row">
         <div class="col"><div class="card" style="flex:1"><div class="card-title">Total repartido — mes a mes</div><div class="chart-wrap"><canvas id="c-cmp-tot"></canvas></div></div></div>
         <div class="col"><div class="card" style="flex:1"><div class="card-title">Comisiones — mes a mes</div><div class="chart-wrap"><canvas id="c-cmp-com"></canvas></div></div></div>
+      </div>
+    </div>
+
+
+    <!-- RESUMEN -->
+    <div class="sec" id="sec-resumen">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:14px;font-weight:700;letter-spacing:-.2px;">Resumen completo — <span id="res-year-lbl"></span></div>
+        <button class="btn btn-g" onclick="exportResumenCSV()" style="font-size:11px;">↓ Exportar CSV</button>
+      </div>
+
+      <!-- ANUAL SUMMARY -->
+      <div class="card" style="flex-shrink:0;">
+        <div class="card-title">Resumen anual</div>
+        <div style="overflow-x:auto;">
+          <table class="res-tbl" id="res-anual"></table>
+        </div>
+      </div>
+
+      <!-- MONTHLY BREAKDOWN -->
+      <div class="card" style="flex:1;overflow:hidden;">
+        <div class="card-title">Desglose mensual</div>
+        <div style="overflow-x:auto;overflow-y:auto;flex:1;max-height:100%;">
+          <table class="res-tbl" id="res-mensual"></table>
+        </div>
       </div>
     </div>
 
@@ -483,7 +521,8 @@ function showTab(id,btn){document.querySelectorAll('.sec').forEach(s=>s.classLis
 function mobilePill(id,btn){document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));document.querySelectorAll('.m-pill').forEach(p=>p.classList.remove('on'));document.getElementById('sec-'+id).classList.add('on');btn.classList.add('on');window.scrollTo({top:0,behavior:'smooth'});btn.scrollIntoView({inline:'center',behavior:'smooth'});}
 
 function renderAll(){
-  renderDashboard();renderZonas();renderRepartidores();renderRentabilidad();renderProyecciones();
+  renderDashboard();
+  renderResumen();renderZonas();renderRepartidores();renderRentabilidad();renderProyecciones();
   setTimeout(updateMobileSummary,80);
   // Force chart resize so they fill containers correctly on mobile
   setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},150);
@@ -607,8 +646,158 @@ function updateMobileSummary(){
   if(mobSel){const yrs=Object.keys(allYears).map(Number).sort((a,b)=>b-a);mobSel.innerHTML=yrs.map(y=>`<option value="${y}"${y===activeYear?' selected':''}>${y}</option>`).join('');}
 }
 
+
+// ── RESUMEN ───────────────────────────────────────────────────────────────────
+function renderResumen(){
+  const ms = allYears[activeYear]?.months || [];
+  const t  = totals(ms);
+  const libre = t.com - t.gastos;
+  const pctG  = t.com > 0 ? t.gastos / t.com : 0;
+  const pctD  = t.fac > 0 ? t.dev   / t.fac  : 0;
+  const grand = ms.reduce((s,m) => s + m.tot, 0);
+
+  document.getElementById('res-year-lbl').textContent = activeYear;
+
+  // ── ANUAL TABLE ────────────────────────────────────────────────────────────
+  const zAnual = ZONES.map(z => ({
+    z,
+    tot: ms.reduce((s,m) => s + (m.zd[z]?.t||0), 0),
+    fac: ms.reduce((s,m) => s + (m.zd[z]?.f||0), 0),
+    dev: ms.reduce((s,m) => s + (m.zd[z]?.d||0), 0),
+    n:   ms.reduce((s,m) => s + (m.zd[z]?.n||0), 0),
+  }));
+
+  const repAnual = ['ROMAÑUK','FLACO'].map(r => {
+    const rep = ms.reduce((a,m) => {
+      const b  = m.repMap?.[r]  || {repartido:0,comision:0};
+      const py = r==='ROMAÑUK' && m.repMap?.['PYA'] ? m.repMap['PYA'] : {repartido:0,comision:0};
+      return { rep: a.rep+b.repartido+py.repartido, com: a.com+b.comision+py.comision };
+    }, {rep:0,com:0});
+    return { name:r, ...rep, pct: rep.rep>0?rep.com/rep.rep:0 };
+  });
+
+  document.getElementById('res-anual').innerHTML = `
+    <thead><tr>
+      <th>Concepto</th>
+      <th>Valor</th>
+      <th>Detalle</th>
+    </tr></thead>
+    <tbody>
+      <tr class="section-head"><td colspan="3">Totales generales</td></tr>
+      <tr><td>Total repartido</td><td style="color:var(--text)">${fmtM(t.tot)}</td><td style="color:var(--text3)">${t.n} repartos</td></tr>
+      <tr><td>Total facturado</td><td style="color:var(--text)">${fmtM(t.fac)}</td><td style="color:var(--text3)">—</td></tr>
+      <tr><td>Devoluciones</td><td style="color:var(--amber)">${fmtM(t.dev)}</td><td style="color:var(--text3)">${fmtP(pctD)} del facturado</td></tr>
+      <tr class="section-head"><td colspan="3">Comisiones y gastos</td></tr>
+      <tr><td>Comisión total</td><td style="color:var(--blue)">${fmtM(t.com)}</td><td style="color:var(--text3)">—</td></tr>
+      <tr><td>Gastos totales</td><td style="color:var(--red)">${fmtM(t.gastos)}</td><td style="color:${clr(pctG)}">${fmtP(pctG)} de comisiones</td></tr>
+      <tr><td>Comisión libre</td><td style="color:${libre>=0?C.green:C.red}">${fmtM(libre)}</td><td style="color:var(--text3)">${fmtP(libre>=0?1-pctG:0)} disponible</td></tr>
+      <tr class="section-head"><td colspan="3">Por repartidor</td></tr>
+      ${repAnual.map(r=>`<tr><td>${r.name}</td><td style="color:var(--text)">${fmtM(r.rep)}</td><td style="color:var(--text3)">Com: ${fmtM(r.com)} (${fmtP(r.pct)})</td></tr>`).join('')}
+      <tr class="section-head"><td colspan="3">Por zona</td></tr>
+      ${zAnual.map(z=>`<tr><td style="color:${ZC[z.z]}">${z.z}</td><td style="color:var(--text)">${fmtM(z.tot)}</td><td style="color:var(--text3)">${(grand>0?z.tot/grand*100:0).toFixed(1)}% · ${z.n} reps · Dev: ${fmtP(z.fac>0?z.dev/z.fac:0)}</td></tr>`).join('')}
+      <tr class="total-row"><td>TOTAL</td><td>${fmtM(t.tot)}</td><td>${t.n} repartos totales</td></tr>
+    </tbody>`;
+
+  // ── MONTHLY TABLE ──────────────────────────────────────────────────────────
+  const zCols = ZONES.map(z => `<th style="color:${ZC[z]}">${z}</th>`).join('');
+  const zColsData = (m) => ZONES.map(z => `<td>${fmtM(m.zd[z]?.t||0)}</td>`).join('');
+
+  const monthRows = ms.map(m => {
+    const lib = m.com - (m.gastos||0);
+    const pg  = m.com > 0 ? (m.gastos||0)/m.com : 0;
+    return `<tr>
+      <td>${m.mesNombre}</td>
+      <td style="color:var(--text)">${fmtM(m.tot)}</td>
+      <td style="color:var(--text3)">${fmtM(m.fac)}</td>
+      <td style="color:var(--amber)">${fmtM(m.dev)}</td>
+      <td style="color:var(--text3)">${fmtP(m.pctDev)}</td>
+      <td style="color:var(--blue)">${fmtM(m.com)}</td>
+      <td style="color:var(--red)">${fmtM(m.gastos||0)}</td>
+      <td style="color:${lib>=0?C.green:C.red}">${fmtM(lib)}</td>
+      <td style="color:${clr(pg)}">${fmtP(pg)}</td>
+      ${zColsData(m)}
+      <td style="color:var(--text3)">${m.n}</td>
+    </tr>`;
+  });
+
+  // Totals row
+  const totZone = ZONES.map(z => `<td style="font-weight:700">${fmtM(ms.reduce((s,m)=>s+(m.zd[z]?.t||0),0))}</td>`).join('');
+  const libTotal = t.com - t.gastos;
+  monthRows.push(`<tr class="total-row">
+    <td>TOTAL</td>
+    <td>${fmtM(t.tot)}</td>
+    <td>${fmtM(t.fac)}</td>
+    <td style="color:var(--amber)">${fmtM(t.dev)}</td>
+    <td>${fmtP(pctD)}</td>
+    <td style="color:var(--blue)">${fmtM(t.com)}</td>
+    <td style="color:var(--red)">${fmtM(t.gastos)}</td>
+    <td style="color:${libTotal>=0?C.green:C.red}">${fmtM(libTotal)}</td>
+    <td style="color:${clr(pctG)}">${fmtP(pctG)}</td>
+    ${totZone}
+    <td>${t.n}</td>
+  </tr>`);
+
+  document.getElementById('res-mensual').innerHTML = `
+    <thead><tr>
+      <th>Mes</th>
+      <th>Repartido</th>
+      <th>Facturado</th>
+      <th>Devolución</th>
+      <th>% Dev</th>
+      <th>Comisión</th>
+      <th>Gastos</th>
+      <th>Libre</th>
+      <th>% Gastos</th>
+      ${zCols}
+      <th>Repartos</th>
+    </tr></thead>
+    <tbody>${monthRows.join('')}</tbody>`;
+}
+
+// ── EXPORT RESUMEN CSV ────────────────────────────────────────────────────────
+function exportResumenCSV(){
+  const ms  = allYears[activeYear]?.months || [];
+  const t   = totals(ms);
+  const rows = [];
+
+  // Header
+  rows.push(['Mes','Repartido','Facturado','Devolucion','%Dev','Comision','Gastos','Libre','%Gastos',...ZONES,'Repartos']);
+
+  ms.forEach(m => {
+    const lib = m.com-(m.gastos||0);
+    const pg  = m.com>0?(m.gastos||0)/m.com:0;
+    rows.push([
+      m.mesNombre,
+      Math.round(m.tot), Math.round(m.fac), Math.round(m.dev),
+      (m.pctDev*100).toFixed(2)+'%',
+      Math.round(m.com), Math.round(m.gastos||0), Math.round(lib),
+      (pg*100).toFixed(2)+'%',
+      ...ZONES.map(z => Math.round(m.zd[z]?.t||0)),
+      m.n
+    ]);
+  });
+
+  const libre = t.com-t.gastos;
+  const pctG  = t.com>0?t.gastos/t.com:0;
+  rows.push(['TOTAL',Math.round(t.tot),Math.round(t.fac),Math.round(t.dev),
+    (t.fac>0?t.dev/t.fac*100:0).toFixed(2)+'%',
+    Math.round(t.com),Math.round(t.gastos),Math.round(libre),
+    (pctG*100).toFixed(2)+'%',
+    ...ZONES.map(z=>Math.round(ms.reduce((s,m)=>s+(m.zd[z]?.t||0),0))),
+    t.n
+  ]);
+
+  const csv  = rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href=url; a.download=`resumen_${activeYear}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── EXPOSE ────────────────────────────────────────────────────────────────────
-window.signIn=signIn;window.signOut=signOut;window.reloadDrive=reloadDrive;
+window.signIn=signIn;
+window.exportResumenCSV=exportResumenCSV;window.signOut=signOut;window.reloadDrive=reloadDrive;
 window.showTab=showTab;window.changeYear=changeYear;
 window.renderCompare=renderCompare;window.mobilePill=mobilePill;
 </script>
