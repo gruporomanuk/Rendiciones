@@ -325,24 +325,36 @@ nav::-webkit-scrollbar{height:0;}
 
     <!-- RESUMEN -->
     <div class="sec" id="sec-resumen">
+      <!-- Header row: title + month filter + export -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;flex-wrap:wrap;gap:8px;">
-        <div style="font-size:14px;font-weight:700;letter-spacing:-.2px;">Resumen completo — <span id="res-year-lbl"></span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:14px;font-weight:700;letter-spacing:-.2px;"><span id="res-year-lbl"></span></div>
+          <select id="res-month-sel" onchange="renderResumen()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-family:var(--sans);font-size:12px;outline:none;">
+            <option value="">— Mes —</option>
+          </select>
+        </div>
         <button class="btn btn-g" onclick="exportResumenCSV()" style="font-size:11px;">↓ Exportar CSV</button>
       </div>
 
-      <!-- ANUAL SUMMARY -->
-      <div class="card" style="flex-shrink:0;">
-        <div class="card-title">Resumen anual</div>
-        <div style="overflow-x:auto;">
-          <table class="res-tbl" id="res-anual"></table>
+      <!-- TWO CARDS SIDE BY SIDE -->
+      <div class="row" style="flex:1;min-height:0;">
+        <!-- MONTHLY (left) -->
+        <div class="col" style="flex:1;min-width:0;">
+          <div class="card" style="flex:1;overflow:hidden;">
+            <div class="card-title" id="res-mes-title">Resumen del mes</div>
+            <div style="overflow-y:auto;flex:1;">
+              <table class="res-tbl" id="res-mes"></table>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <!-- MONTHLY BREAKDOWN -->
-      <div class="card" style="flex:1;overflow:hidden;">
-        <div class="card-title">Desglose mensual</div>
-        <div style="overflow-x:auto;overflow-y:auto;flex:1;max-height:100%;">
-          <table class="res-tbl" id="res-mensual"></table>
+        <!-- ANNUAL (right) -->
+        <div class="col" style="flex:1;min-width:0;">
+          <div class="card" style="flex:1;overflow:hidden;">
+            <div class="card-title">Resumen anual</div>
+            <div style="overflow-y:auto;flex:1;">
+              <table class="res-tbl" id="res-anual"></table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -649,39 +661,92 @@ function updateMobileSummary(){
 
 // ── RESUMEN ───────────────────────────────────────────────────────────────────
 function renderResumen(){
-  const ms = allYears[activeYear]?.months || [];
-  const t  = totals(ms);
-  const libre = t.com - t.gastos;
-  const pctG  = t.com > 0 ? t.gastos / t.com : 0;
-  const pctD  = t.fac > 0 ? t.dev   / t.fac  : 0;
-  const grand = ms.reduce((s,m) => s + m.tot, 0);
+  const ms  = allYears[activeYear]?.months || [];
+  const t   = totals(ms);
+  const libre  = t.com - t.gastos;
+  const pctG   = t.com > 0 ? t.gastos / t.com : 0;
+  const pctD   = t.fac > 0 ? t.dev / t.fac : 0;
+  const grand  = ms.reduce((s,m) => s + m.tot, 0);
 
   document.getElementById('res-year-lbl').textContent = activeYear;
 
-  // ── ANUAL TABLE ────────────────────────────────────────────────────────────
-  const zAnual = ZONES.map(z => ({
-    z,
-    tot: ms.reduce((s,m) => s + (m.zd[z]?.t||0), 0),
-    fac: ms.reduce((s,m) => s + (m.zd[z]?.f||0), 0),
-    dev: ms.reduce((s,m) => s + (m.zd[z]?.d||0), 0),
-    n:   ms.reduce((s,m) => s + (m.zd[z]?.n||0), 0),
-  }));
+  // Populate month selector
+  const sel = document.getElementById('res-month-sel');
+  const prevVal = sel.value;
+  sel.innerHTML = '<option value="">Año completo</option>' +
+    ms.map(m => `<option value="${m.mesNum}"${m.mesNum===new Date().getMonth()+1?' selected':''}>${m.mesNombre}</option>`).join('');
+  if(prevVal) sel.value = prevVal;
 
-  const repAnual = ['ROMAÑUK','FLACO'].map(r => {
-    const rep = ms.reduce((a,m) => {
-      const b  = m.repMap?.[r]  || {repartido:0,comision:0};
-      const py = r==='ROMAÑUK' && m.repMap?.['PYA'] ? m.repMap['PYA'] : {repartido:0,comision:0};
-      return { rep: a.rep+b.repartido+py.repartido, com: a.com+b.comision+py.comision };
-    }, {rep:0,com:0});
-    return { name:r, ...rep, pct: rep.rep>0?rep.com/rep.rep:0 };
+  // Selected month data
+  const selNum = parseInt(sel.value) || 0;
+  const selM   = selNum ? ms.find(m => m.mesNum === selNum) : null;
+  const mLabel = selM ? selM.mesNombre + ' ' + activeYear : 'Año completo';
+  document.getElementById('res-mes-title').textContent = 'Resumen — ' + mLabel;
+
+  // ── MONTHLY/SELECTED TABLE ─────────────────────────────────────────────────
+  const src = selM || { tot:t.tot, fac:t.fac, dev:t.dev, com:t.com, gastos:t.gastos,
+    n:t.n, pctDev:pctD,
+    zd: Object.fromEntries(ZONES.map(z=>[z,{
+      t: ms.reduce((s,m)=>s+(m.zd[z]?.t||0),0),
+      f: ms.reduce((s,m)=>s+(m.zd[z]?.f||0),0),
+      d: ms.reduce((s,m)=>s+(m.zd[z]?.d||0),0),
+      n: ms.reduce((s,m)=>s+(m.zd[z]?.n||0),0),
+    }])),
+    repMap: null
+  };
+
+  const srcLibre = src.com - (src.gastos||0);
+  const srcPctG  = src.com > 0 ? (src.gastos||0)/src.com : 0;
+  const srcGrand = ZONES.reduce((s,z)=>s+(src.zd[z]?.t||0),0);
+
+  // Repartidor data for selected period
+  const srcReps = ['ROMAÑUK','FLACO'].map(r => {
+    if(selM){
+      const b  = selM.repMap?.[r]  || {repartido:0,comision:0};
+      const py = r==='ROMAÑUK' && selM.repMap?.['PYA'] ? selM.repMap['PYA'] : {repartido:0,comision:0};
+      return { name:r, rep:b.repartido+py.repartido, com:b.comision+py.comision };
+    } else {
+      return ms.reduce((a,m)=>{
+        const b  = m.repMap?.[r]  || {repartido:0,comision:0};
+        const py = r==='ROMAÑUK' && m.repMap?.['PYA'] ? m.repMap['PYA'] : {repartido:0,comision:0};
+        return { name:r, rep:a.rep+b.repartido+py.repartido, com:a.com+b.comision+py.comision };
+      },{name:r,rep:0,com:0});
+    }
   });
 
+  document.getElementById('res-mes').innerHTML = `
+    <thead><tr><th>Concepto</th><th>Valor</th><th>Detalle</th></tr></thead>
+    <tbody>
+      <tr class="section-head"><td colspan="3">Totales</td></tr>
+      <tr><td>Total repartido</td><td style="color:var(--text)">${fmtM(src.tot)}</td><td style="color:var(--text3)">${src.n} repartos</td></tr>
+      <tr><td>Total facturado</td><td style="color:var(--text)">${fmtM(src.fac)}</td><td style="color:var(--text3)">—</td></tr>
+      <tr><td>Devoluciones</td><td style="color:var(--amber)">${fmtM(src.dev)}</td><td style="color:var(--text3)">${fmtP(src.pctDev)} del facturado</td></tr>
+      <tr class="section-head"><td colspan="3">Comisiones y gastos</td></tr>
+      <tr><td>Comisión</td><td style="color:var(--blue)">${fmtM(src.com)}</td><td style="color:var(--text3)">—</td></tr>
+      <tr><td>Gastos</td><td style="color:var(--red)">${fmtM(src.gastos||0)}</td><td style="color:${clr(srcPctG)}">${fmtP(srcPctG)} de comisión</td></tr>
+      <tr><td>Comisión libre</td><td style="color:${srcLibre>=0?C.green:C.red}">${fmtM(srcLibre)}</td><td style="color:var(--text3)">${fmtP(src.com>0?srcLibre/src.com:0)} disponible</td></tr>
+      <tr class="section-head"><td colspan="3">Por repartidor</td></tr>
+      ${srcReps.map(r=>`<tr><td>${r.name}</td><td style="color:var(--text)">${fmtM(r.rep)}</td><td style="color:var(--text3)">Com: ${fmtM(r.com)} (${fmtP(r.rep>0?r.com/r.rep:0)})</td></tr>`).join('')}
+      <tr class="section-head"><td colspan="3">Por zona</td></tr>
+      ${ZONES.map(z=>{const zv=src.zd[z]||{t:0,f:0,d:0,n:0};return`<tr><td style="color:${ZC[z]}">${z}</td><td style="color:var(--text)">${fmtM(zv.t)}</td><td style="color:var(--text3)">${(srcGrand>0?zv.t/srcGrand*100:0).toFixed(1)}% · ${zv.n} reps · Dev: ${fmtP(zv.f>0?zv.d/zv.f:0)}</td></tr>`;}).join('')}
+      <tr class="total-row"><td>TOTAL</td><td>${fmtM(src.tot)}</td><td>${src.n} repartos</td></tr>
+    </tbody>`;
+
+  // ── ANNUAL TABLE ───────────────────────────────────────────────────────────
+  const zAnual = ZONES.map(z=>({z,
+    tot:ms.reduce((s,m)=>s+(m.zd[z]?.t||0),0),
+    fac:ms.reduce((s,m)=>s+(m.zd[z]?.f||0),0),
+    dev:ms.reduce((s,m)=>s+(m.zd[z]?.d||0),0),
+    n:  ms.reduce((s,m)=>s+(m.zd[z]?.n||0),0),
+  }));
+  const repAnual = ['ROMAÑUK','FLACO'].map(r=>ms.reduce((a,m)=>{
+    const b=m.repMap?.[r]||{repartido:0,comision:0};
+    const py=r==='ROMAÑUK'&&m.repMap?.['PYA']?m.repMap['PYA']:{repartido:0,comision:0};
+    return{name:r,rep:a.rep+b.repartido+py.repartido,com:a.com+b.comision+py.comision};
+  },{name:r,rep:0,com:0}));
+
   document.getElementById('res-anual').innerHTML = `
-    <thead><tr>
-      <th>Concepto</th>
-      <th>Valor</th>
-      <th>Detalle</th>
-    </tr></thead>
+    <thead><tr><th>Concepto</th><th>Valor</th><th>Detalle</th></tr></thead>
     <tbody>
       <tr class="section-head"><td colspan="3">Totales generales</td></tr>
       <tr><td>Total repartido</td><td style="color:var(--text)">${fmtM(t.tot)}</td><td style="color:var(--text3)">${t.n} repartos</td></tr>
@@ -692,66 +757,11 @@ function renderResumen(){
       <tr><td>Gastos totales</td><td style="color:var(--red)">${fmtM(t.gastos)}</td><td style="color:${clr(pctG)}">${fmtP(pctG)} de comisiones</td></tr>
       <tr><td>Comisión libre</td><td style="color:${libre>=0?C.green:C.red}">${fmtM(libre)}</td><td style="color:var(--text3)">${fmtP(libre>=0?1-pctG:0)} disponible</td></tr>
       <tr class="section-head"><td colspan="3">Por repartidor</td></tr>
-      ${repAnual.map(r=>`<tr><td>${r.name}</td><td style="color:var(--text)">${fmtM(r.rep)}</td><td style="color:var(--text3)">Com: ${fmtM(r.com)} (${fmtP(r.pct)})</td></tr>`).join('')}
+      ${repAnual.map(r=>`<tr><td>${r.name}</td><td style="color:var(--text)">${fmtM(r.rep)}</td><td style="color:var(--text3)">Com: ${fmtM(r.com)} (${fmtP(r.rep>0?r.com/r.rep:0)})</td></tr>`).join('')}
       <tr class="section-head"><td colspan="3">Por zona</td></tr>
       ${zAnual.map(z=>`<tr><td style="color:${ZC[z.z]}">${z.z}</td><td style="color:var(--text)">${fmtM(z.tot)}</td><td style="color:var(--text3)">${(grand>0?z.tot/grand*100:0).toFixed(1)}% · ${z.n} reps · Dev: ${fmtP(z.fac>0?z.dev/z.fac:0)}</td></tr>`).join('')}
       <tr class="total-row"><td>TOTAL</td><td>${fmtM(t.tot)}</td><td>${t.n} repartos totales</td></tr>
     </tbody>`;
-
-  // ── MONTHLY TABLE ──────────────────────────────────────────────────────────
-  const zCols = ZONES.map(z => `<th style="color:${ZC[z]}">${z}</th>`).join('');
-  const zColsData = (m) => ZONES.map(z => `<td>${fmtM(m.zd[z]?.t||0)}</td>`).join('');
-
-  const monthRows = ms.map(m => {
-    const lib = m.com - (m.gastos||0);
-    const pg  = m.com > 0 ? (m.gastos||0)/m.com : 0;
-    return `<tr>
-      <td>${m.mesNombre}</td>
-      <td style="color:var(--text)">${fmtM(m.tot)}</td>
-      <td style="color:var(--text3)">${fmtM(m.fac)}</td>
-      <td style="color:var(--amber)">${fmtM(m.dev)}</td>
-      <td style="color:var(--text3)">${fmtP(m.pctDev)}</td>
-      <td style="color:var(--blue)">${fmtM(m.com)}</td>
-      <td style="color:var(--red)">${fmtM(m.gastos||0)}</td>
-      <td style="color:${lib>=0?C.green:C.red}">${fmtM(lib)}</td>
-      <td style="color:${clr(pg)}">${fmtP(pg)}</td>
-      ${zColsData(m)}
-      <td style="color:var(--text3)">${m.n}</td>
-    </tr>`;
-  });
-
-  // Totals row
-  const totZone = ZONES.map(z => `<td style="font-weight:700">${fmtM(ms.reduce((s,m)=>s+(m.zd[z]?.t||0),0))}</td>`).join('');
-  const libTotal = t.com - t.gastos;
-  monthRows.push(`<tr class="total-row">
-    <td>TOTAL</td>
-    <td>${fmtM(t.tot)}</td>
-    <td>${fmtM(t.fac)}</td>
-    <td style="color:var(--amber)">${fmtM(t.dev)}</td>
-    <td>${fmtP(pctD)}</td>
-    <td style="color:var(--blue)">${fmtM(t.com)}</td>
-    <td style="color:var(--red)">${fmtM(t.gastos)}</td>
-    <td style="color:${libTotal>=0?C.green:C.red}">${fmtM(libTotal)}</td>
-    <td style="color:${clr(pctG)}">${fmtP(pctG)}</td>
-    ${totZone}
-    <td>${t.n}</td>
-  </tr>`);
-
-  document.getElementById('res-mensual').innerHTML = `
-    <thead><tr>
-      <th>Mes</th>
-      <th>Repartido</th>
-      <th>Facturado</th>
-      <th>Devolución</th>
-      <th>% Dev</th>
-      <th>Comisión</th>
-      <th>Gastos</th>
-      <th>Libre</th>
-      <th>% Gastos</th>
-      ${zCols}
-      <th>Repartos</th>
-    </tr></thead>
-    <tbody>${monthRows.join('')}</tbody>`;
 }
 
 // ── EXPORT RESUMEN CSV ────────────────────────────────────────────────────────
