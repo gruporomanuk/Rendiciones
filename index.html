@@ -442,28 +442,34 @@ async function loadDrive(){
 function parseXLSX(buf){
   const wb=XLSX.read(buf,{type:'array'});
   const months=[];
-  // Balance gastos: structure is dates row, COMISION row, GASTOS row
-  const gastosMap={};
+  // Balance: read COMISION and GASTOS per month
+  const gastosMap={},comisionMap={};
   const bsh=wb.SheetNames.find(s=>s.toUpperCase().includes('BALANCE'));
   if(bsh){
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[bsh],{header:1,defval:null,raw:true});
-    for(let i=0;i<rows.length-2;i++){
-      const gasRow=rows[i];if(!gasRow)continue;
-      const lbl=(gasRow[0]||'').toString().toUpperCase().trim();
-      if(lbl!=='GASTOS')continue;
-      const dateRow=rows[i-2]||[];
-      gasRow.forEach((val,ci)=>{
+    const getMes=dv=>{
+      if(!dv)return null;
+      if(typeof dv==='number'&&dv>40000){const d=new Date(Math.round((dv-25569)*86400*1000));return d.getUTCMonth()+1;}
+      if(dv instanceof Date)return dv.getMonth()+1;
+      if(typeof dv==='string'){const m=dv.match(/-(\d{2})-/);if(m)return parseInt(m[1]);}
+      return null;
+    };
+    for(let i=1;i<rows.length;i++){
+      const row=rows[i];if(!row)continue;
+      const lbl=(row[0]||'').toString().toUpperCase().trim();
+      if(lbl!=='COMISION'&&lbl!=='GASTOS')continue;
+      const dateRow=rows[i-1]||[];
+      row.forEach((val,ci)=>{
         if(ci===0)return;
-        const gastos=parseFloat(val);if(isNaN(gastos)||gastos<=0)return;
-        const dv=dateRow[ci];let mes=null;
-        if(typeof dv==='number'&&dv>40000){const d=new Date(Math.round((dv-25569)*86400*1000));mes=d.getUTCMonth()+1;}
-        else if(dv instanceof Date){mes=dv.getMonth()+1;}
-        else if(typeof dv==='string'){const m=dv.match(/-(\d{2})-/);if(m)mes=parseInt(m[1]);}
-        if(mes&&mes>=1&&mes<=12)gastosMap[mes]=gastos;
+        const v=parseFloat(val);if(isNaN(v)||v<=0)return;
+        const mes=getMes(dateRow[ci]);
+        if(!mes||mes<1||mes>12)return;
+        if(lbl==='COMISION')comisionMap[mes]=v;
+        if(lbl==='GASTOS')  gastosMap[mes]=v;
       });
     }
   }
-  wb.SheetNames.forEach(name=>{
+    wb.SheetNames.forEach(name=>{
     const up=name.toUpperCase();
     if(!up.includes('RENDICION')||up.includes('PROMED')||up.includes('BALANCE'))return;
     const mMatch=name.match(/(\d+)/);if(!mMatch)return;
@@ -508,9 +514,8 @@ function parseXLSX(buf){
       fac+=f;dev+=d;tot+=t2;com+=c2;nr++;
       zd[lugar].t+=t2;zd[lugar].f+=f;zd[lugar].d+=d;zd[lugar].n++;
     });
-    // Use repMap totals for commission (more accurate than summing detail col)
-    const comFromMap = (repMap['ROMAÑUK']?.comision||0) + (repMap['PYA']?.comision||0) + (repMap['FLACO']?.comision||0);
-    const finalCom = comFromMap > 0 ? comFromMap : com;
+    // Use BALANCE sheet commission (most accurate source)
+    const finalCom = comisionMap[mesNum] || (repMap['ROMAÑUK']?.comision||0) + (repMap['PYA']?.comision||0) + (repMap['FLACO']?.comision||0) || com;
     if(nr>0)months.push({mesNum,mesNombre:MONTHS[mesNum-1],n:nr,fac,dev,tot,com:finalCom,gastos:gastosMap[mesNum]||0,zd,repMap,pctDev:fac>0?dev/fac:0});
   });
   return months.sort((a,b)=>a.mesNum-b.mesNum);
