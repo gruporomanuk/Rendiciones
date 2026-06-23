@@ -508,7 +508,10 @@ function parseXLSX(buf){
       fac+=f;dev+=d;tot+=t2;com+=c2;nr++;
       zd[lugar].t+=t2;zd[lugar].f+=f;zd[lugar].d+=d;zd[lugar].n++;
     });
-    if(nr>0)months.push({mesNum,mesNombre:MONTHS[mesNum-1],n:nr,fac,dev,tot,com,gastos:gastosMap[mesNum]||0,zd,repMap,pctDev:fac>0?dev/fac:0});
+    // Use repMap totals for commission (more accurate than summing detail col)
+    const comFromMap = (repMap['ROMAÑUK']?.comision||0) + (repMap['PYA']?.comision||0) + (repMap['FLACO']?.comision||0);
+    const finalCom = comFromMap > 0 ? comFromMap : com;
+    if(nr>0)months.push({mesNum,mesNombre:MONTHS[mesNum-1],n:nr,fac,dev,tot,com:finalCom,gastos:gastosMap[mesNum]||0,zd,repMap,pctDev:fac>0?dev/fac:0});
   });
   return months.sort((a,b)=>a.mesNum-b.mesNum);
 }
