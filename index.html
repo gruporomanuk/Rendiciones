@@ -458,7 +458,8 @@ function parseXLSX(buf){
       const row=rows[i];if(!row)continue;
       const lbl=(row[0]||'').toString().toUpperCase().trim();
       if(lbl!=='COMISION'&&lbl!=='GASTOS')continue;
-      const dateRow=rows[i-1]||[];
+      // Dates are always 1 row above COMISION, 2 rows above GASTOS
+      const dateRow = lbl==='COMISION' ? (rows[i-1]||[]) : (rows[i-2]||[]);
       row.forEach((val,ci)=>{
         if(ci===0)return;
         const v=parseFloat(val);if(isNaN(v)||v<=0)return;
