@@ -158,6 +158,11 @@ tr:hover td{background:#ffffff04;}
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="text" id="search" placeholder="Buscar cliente…" oninput="applyFilters()"/>
     </div>
+    <select class="filter" id="filter-estado" onchange="applyFilters()">
+      <option value="No">Sin transferencia</option>
+      <option value="Si">Transfirieron</option>
+      <option value="">Todos</option>
+    </select>
     <select class="filter" id="filter-tc" onchange="applyFilters()">
       <option value="">Todos los tipos</option>
     </select>
@@ -342,17 +347,19 @@ function buildFilterOptions(){
 
 // ── KPIs ─────────────────────────────────────────────────────────────────────
 function renderKPIs(){
-  const noRows = allRows.filter(r=>r.pago==='No');
-  const totalMonto = noRows.reduce((s,r)=>s+r.monto,0);
-  const totalRows  = allRows.length;
+  const noRows  = allRows.filter(r=>r.pago==='No');
+  const siRows  = allRows.filter(r=>r.pago==='Si');
+  const totalRows = allRows.length;
   const pctNo = totalRows>0 ? noRows.length/totalRows : 0;
+  const montoNo  = noRows.reduce((s,r)=>s+r.monto,0);
+  const montoSi  = siRows.reduce((s,r)=>s+r.monto,0);
   const clientes = new Set(noRows.map(r=>r.cliente)).size;
 
   document.getElementById('kpis').innerHTML = [
-    {l:'Sin transferencia', v:noRows.length,         s:`de ${totalRows} registros`, c:'var(--red)'},
-    {l:'Monto pendiente',   v:fmtM(totalMonto),      s:`${(pctNo*100).toFixed(1)}% del total`, c:'var(--amber)'},
-    {l:'Clientes únicos',   v:clientes,              s:'con deuda pendiente', c:'var(--purple)'},
-    {l:'Promedio por pend.',v:fmtM(noRows.length>0?totalMonto/noRows.length:0), s:'por cliente', c:'var(--text2)'},
+    {l:'Sin transferencia', v:noRows.length,    s:`de ${totalRows} registros`, c:'var(--red)'},
+    {l:'Monto pendiente',   v:fmtM(montoNo),    s:`${(pctNo*100).toFixed(1)}% del total`, c:'var(--amber)'},
+    {l:'Transfirieron',     v:siRows.length,    s:`${fmtM(montoSi)} cobrado`, c:'var(--green)'},
+    {l:'Clientes únicos',   v:clientes,         s:'con deuda pendiente', c:'var(--purple)'},
   ].map(k=>`<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val" style="color:${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
 }
 
@@ -363,11 +370,13 @@ function applyFilters(){
   const year    = document.getElementById('filter-year').value;
   const month   = document.getElementById('filter-month').value;
 
+  const estado = document.getElementById('filter-estado').value;
+
   filtered = allRows.filter(r=>{
-    if(r.pago !== 'No') return false;
-    if(year  && String(r.year)      !== year)  return false;
-    if(month && r.mesNombre         !== month) return false;
-    if(tc    && r.tc                !== tc)    return false;
+    if(estado && r.pago !== estado) return false;
+    if(year  && String(r.year)  !== year)  return false;
+    if(month && r.mesNombre     !== month) return false;
+    if(tc    && r.tc            !== tc)    return false;
     if(search && !r.cliente.toLowerCase().includes(search) && !String(r.reparto).includes(search)) return false;
     return true;
   });
@@ -387,7 +396,9 @@ function applyFilters(){
   });
 
   renderTable();
-  document.getElementById('tbl-title').textContent = `Clientes sin transferencia — ${filtered.length} registros`;
+  const estadoLbl = document.getElementById('filter-estado').value;
+  const tblTitle = estadoLbl==='Si'?'Clientes que transfirieron':estadoLbl==='No'?'Clientes sin transferencia':'Todos los registros';
+  document.getElementById('tbl-title').textContent = `${tblTitle} — ${filtered.length} registros`;
 }
 
 // ── TABLE ─────────────────────────────────────────────────────────────────────
@@ -408,14 +419,17 @@ function renderTable(){
       <td style="font-weight:600;color:var(--text)">${r.cliente}</td>
       <td class="monto">${fmtM(r.monto)}</td>
       <td style="color:var(--text3)">${r.tc}</td>
-      <td><span class="pago-no">✗ No transfirió</span></td>
+      <td>${r.pago==='Si'?'<span class="pago-si">✓ Transfirió</span>':'<span class="pago-no">✗ No transfirió</span>'}</td>
     </tr>`;
   }).join('');
 
-  const total = filtered.reduce((s,r)=>s+r.monto,0);
+  const total   = filtered.reduce((s,r)=>s+r.monto,0);
+  const estadoV = document.getElementById('filter-estado').value;
+  const label   = estadoV==='Si'?'clientes que transfirieron':estadoV==='No'?'clientes pendientes':'registros';
+  const colorT  = estadoV==='Si'?'var(--green)':'var(--red)';
   document.getElementById('summary-bar').innerHTML = `
-    <span><b>${filtered.length}</b> clientes pendientes</span>
-    <span>Total adeudado: <b style="color:var(--red)">${fmtM(total)}</b></span>
+    <span><b>${filtered.length}</b> ${label}</span>
+    <span>Total: <b style="color:${colorT}">${fmtM(total)}</b></span>
     <span>Promedio: <b>${fmtM(filtered.length>0?total/filtered.length:0)}</b></span>
   `;
 }
