@@ -1,1 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Clientes Pendientes — Rendiciones</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:#070A0F; --bg2:#0C1018; --bg3:#111722;
+  --border:#1A2235; --border2:#223050;
+  --blue:#3D7EFF; --green:#00D97E; --red:#FF4D6A; --amber:#FFB547; --purple:#9B6DFF;
+  --text:#E8EDF5; --text2:#7A8CAA; --text3:#3D4F6B;
+  --mono:'DM Mono',monospace; --sans:'Familjen Grotesk',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
+/* ── HEADER ── */
+header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
+.logo{display:flex;align-items:center;gap:9px;}
+.logo-mark{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;}
+.logo-name{font-weight:700;font-size:14px;letter-spacing:-.3px;}
+.logo-sub{font-size:8px;font-family:var(--mono);color:var(--red);letter-spacing:.15em;text-transform:uppercase;}
+.hdr-right{display:flex;align-items:center;gap:8px;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:600;transition:all .15s;}
+.btn-p{background:var(--blue);color:#fff;}.btn-p:hover{background:#5b93ff;}
+.btn-g{background:var(--bg3);border:1px solid var(--border);color:var(--text2);}.btn-g:hover{color:var(--text);border-color:var(--border2);}
+.btn-danger{background:#FF4D6A22;border:1px solid #FF4D6A44;color:var(--red);}.btn-danger:hover{background:#FF4D6A33;}
+
+/* ── AUTH ── */
+#auth{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:2rem;}
+.auth-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:2.5rem;max-width:400px;width:100%;text-align:center;}
+.auth-title{font-size:20px;font-weight:700;margin:12px 0 8px;}
+.auth-sub{color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:24px;}
+.g-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+.g-btn:hover{border-color:var(--blue);}
+
+/* ── LOADING ── */
+#loading{display:none;align-items:center;justify-content:center;min-height:calc(100vh - 52px);flex-direction:column;gap:12px;}
+.spinner{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--blue);animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-msg{font-family:var(--mono);font-size:12px;color:var(--text2);}
+#prog{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;}
+
+/* ── MAIN ── */
+#main{display:none;padding:1.5rem;max-width:1300px;margin:0 auto;}
+
+/* ── KPI ROW ── */
+.kpi-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 16px;flex:1;min-width:130px;}
+.kpi-lbl{font-size:8px;font-family:var(--mono);color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;}
+.kpi-val{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-1px;}
+.kpi-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+
+/* ── TOOLBAR ── */
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+.toolbar-title{font-size:16px;font-weight:700;letter-spacing:-.2px;flex:1;}
+.search-wrap{position:relative;}
+.search-wrap input{background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 12px 7px 32px;font-family:var(--sans);font-size:12px;outline:none;width:200px;transition:border .2s;}
+.search-wrap input:focus{border-color:var(--blue);}
+.search-wrap svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);}
+select.filter{background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-family:var(--sans);font-size:12px;outline:none;cursor:pointer;transition:border .2s;}
+select.filter:focus{border-color:var(--blue);}
+
+/* ── TABLE ── */
+.tbl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead tr{background:var(--bg3);}
+th{padding:9px 14px;text-align:left;font-size:8px;font-family:var(--mono);color:var(--text3);letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+th:hover{color:var(--text2);}
+th .sort-icon{margin-left:4px;opacity:.4;}
+th.sorted .sort-icon{opacity:1;color:var(--blue);}
+td{padding:9px 14px;border-bottom:1px solid var(--bg3);font-size:12px;white-space:nowrap;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#ffffff04;}
+.zone-pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-family:var(--mono);font-weight:600;}
+.pago-no{display:inline-flex;align-items:center;gap:4px;background:#FF4D6A18;color:var(--red);border:1px solid #FF4D6A33;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;font-family:var(--mono);}
+.pago-si{display:inline-flex;align-items:center;gap:4px;background:#00D97E18;color:var(--green);border:1px solid #00D97E33;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;font-family:var(--mono);}
+.monto{font-family:var(--mono);font-size:12px;color:var(--red);font-weight:500;}
+.empty{text-align:center;padding:3rem;color:var(--text3);font-size:13px;}
+
+/* ── BOTTOM SUMMARY ── */
+.summary-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-top:1px solid var(--border);font-size:11px;color:var(--text3);flex-wrap:wrap;gap:8px;}
+.summary-bar b{color:var(--text);}
+
+/* ── MOBILE ── */
+@media(max-width:680px){
+  header{padding:0 1rem;height:46px;}
+  #main{padding:1rem;}
+  .kpi-row{gap:8px;}
+  .kpi{min-width:calc(50% - 4px);flex:none;}
+  .toolbar{gap:8px;}
+  .search-wrap input{width:140px;}
+  th,td{padding:7px 10px;}
+  .toolbar-title{width:100%;}
+  table{font-size:11px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">R</div>
+    <div><div class="logo-name">Rendiciones</div><div class="logo-sub">Pendientes</div></div>
+  </div>
+  <div class="hdr-right">
+    <a href="index.html" class="btn btn-g" style="text-decoration:none">← Dashboard</a>
+    <button class="btn btn-g" id="btn-reload" style="display:none" onclick="reloadDrive()">↻</button>
+    <button class="btn btn-g" id="btn-out"    style="display:none" onclick="signOut()">Salir</button>
+  </div>
+</header>
+
+<div id="auth">
+  <div class="auth-card">
+    <div style="font-size:40px">🔍</div>
+    <div class="auth-title">Clientes Pendientes</div>
+    <div class="auth-sub">Iniciá sesión con Google para ver los clientes que no transfirieron.</div>
+    <button class="g-btn" onclick="signIn()">
+      <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
+      Continuar con Google
+    </button>
+  </div>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="load-msg" id="load-msg">Conectando…</div>
+  <div id="prog"></div>
+</div>
+
+<div id="main">
+  <!-- KPIs -->
+  <div class="kpi-row" id="kpis"></div>
+
+  <!-- Toolbar -->
+  <!-- Year + Month filter row -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;" id="filter-row">
+    <select class="filter" id="filter-year" onchange="applyFilters()" style="min-width:90px;">
+      <option value="">Todos los años</option>
+    </select>
+    <select class="filter" id="filter-month" onchange="applyFilters()" style="min-width:110px;">
+      <option value="">Todos los meses</option>
+    </select>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);font-family:var(--mono);padding-left:4px;">
+      <span id="filter-summary"></span>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar-title" id="tbl-title">Clientes sin transferencia</div>
+    <div class="search-wrap">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="search" placeholder="Buscar cliente…" oninput="applyFilters()"/>
+    </div>
+    <select class="filter" id="filter-estado" onchange="applyFilters()">
+      <option value="No">Sin transferencia</option>
+      <option value="Si">Transfirieron</option>
+      <option value="">Todos</option>
+    </select>
+    <select class="filter" id="filter-tc" onchange="applyFilters()">
+      <option value="">Todos los tipos</option>
+    </select>
+    <button class="btn btn-danger" id="btn-export" onclick="exportCSV()">↓ Exportar CSV</button>
+  </div>
+
+  <!-- Table -->
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('mes')"    id="th-mes">Mes <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('fecha')"  id="th-fecha">Fecha <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('reparto')"id="th-reparto">Reparto <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('cliente')"id="th-cliente">Cliente <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('monto')"  id="th-monto">Monto <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('tc')"     id="th-tc">Tipo <span class="sort-icon">↕</span></th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body"></tbody>
+    </table>
+    <div class="summary-bar" id="summary-bar"></div>
+  </div>
+</div>
+
+<script>
+const CLIENT_ID = '632310531488-sko39immb3rhm6696ha2kolmupvq984c.apps.googleusercontent.com';
+const FOLDER_ID = '1SLg-5lScNOhSeGsYdy2bmMA4ONitGBgj';
+const SCOPES    = 'https://www.googleapis.com/auth/drive.readonly';
+const MONTHS    = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const ZC        = {T:'#3D7EFF',TM:'#00D97E',P:'#9B6DFF',A:'#F97316',M:'#6B7A95',O:'#94A3B8',Q:'#E879F9'};
+
+let tokenClient, accessToken;
+let allRows = [];        // all parsed rows (pago = No)
+let filtered = [];       // after filters
+let sortCol = 'mes', sortAsc = true;
+
+// ── FORMAT ────────────────────────────────────────────────────────────────────
+const fmtM = v => { if(!v&&v!==0)return'—'; return'$'+Math.round(v).toLocaleString('es-AR'); };
+const fmtDate = d => { if(!d)return'—'; try{ const dt=new Date(d); return `${dt.getDate().toString().padStart(2,'0')}/${(dt.getMonth()+1).toString().padStart(2,'0')}`; }catch{return d;} };
+
+function log(msg){ const e=document.getElementById('prog'); const s=document.createElement('span'); s.textContent=msg; s.style.display='block'; e.prepend(s); if(e.children.length>3)e.removeChild(e.lastChild); }
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  const s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = () => {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID, scope: SCOPES,
+      callback: async r => { if(r.error)return; accessToken=r.access_token; await loadDrive(); }
+    });
+    try { google.accounts.oauth2.initTokenClient({ client_id:CLIENT_ID, scope:SCOPES, prompt:'none',
+      callback: async r => { if(r.access_token){ accessToken=r.access_token; await loadDrive(); } }
+    }).requestAccessToken(); } catch(e){}
+  };
+  document.head.appendChild(s);
+};
+
+function signIn(){ try{ tokenClient.requestAccessToken({prompt:'select_account'}); }catch(e){ alert('Error: '+e.message); } }
+function signOut(){ if(accessToken) google.accounts.oauth2.revoke(accessToken); accessToken=null; document.getElementById('auth').style.display='flex'; document.getElementById('main').style.display='none'; ['btn-out','btn-reload'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';}); }
+function reloadDrive(){ if(accessToken) loadDrive(); }
+
+// ── DRIVE ─────────────────────────────────────────────────────────────────────
+async function driveList(q){ const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=50`,{headers:{Authorization:`Bearer ${accessToken}`}}); return(await r.json()).files||[]; }
+async function driveGet(id){ const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{Authorization:`Bearer ${accessToken}`}}); return await r.arrayBuffer(); }
+
+async function loadDrive(){
+  document.getElementById('loading').style.display='flex';
+  document.getElementById('auth').style.display='none';
+  document.getElementById('main').style.display='none';
+  document.getElementById('load-msg').textContent='Conectando con Google Drive…';
+  try {
+    const files = await driveList(`'${FOLDER_ID}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`);
+    if(!files.length){ document.getElementById('load-msg').textContent='No se encontraron archivos.'; return; }
+    allRows = [];
+    for(const f of files){
+      log(`Procesando ${f.name}…`);
+      try{
+        const buf = await driveGet(f.id);
+        let yr = parseInt((f.name.match(/(\d{2,4})/)||[])[1]||new Date().getFullYear());
+        if(yr<100) yr+=2000;
+        parseFile(buf, yr);
+        log(`✓ ${f.name}`);
+      }catch(e){ log(`✗ ${f.name}: ${e.message}`); }
+    }
+    document.getElementById('loading').style.display='none';
+    document.getElementById('main').style.display='block';
+    ['btn-out','btn-reload'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='';});
+    buildFilterOptions();
+    renderKPIs();
+    applyFilters();
+  }catch(e){ document.getElementById('load-msg').textContent='Error: '+e.message; console.error(e); }
+}
+
+// ── PARSER ────────────────────────────────────────────────────────────────────
+function parseFile(buf, year){
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  wb.SheetNames.forEach(name => {
+    const up = name.toUpperCase();
+    if(!up.includes('RENDICION')||up.includes('PROMED')||up.includes('BALANCE')) return;
+    const mMatch = name.match(/(\d+)/); if(!mMatch) return;
+    const mesNum = parseInt(mMatch[1]);
+    const mesNombre = MONTHS[mesNum-1];
+    const ws = wb.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
+
+    // Find second table header: has CLIENTE column
+    let h2Idx = -1, ci = {};
+    for(let i=0; i<rows.length; i++){
+      const row = rows[i]; if(!row) continue;
+      const hasCliente = row.some(v=>v&&String(v).toUpperCase().trim()==='CLIENTE');
+      if(hasCliente){
+        h2Idx = i;
+        row.forEach((v,j)=>{
+          if(!v) return; const u=String(v).toUpperCase().trim();
+          if(u==='CLIENTE') ci.CLI=j; if(u==='REPARTO') ci.REP=j;
+          if(u==='MONTO')   ci.MON=j; if(u==='PAGO')    ci.PAG=j;
+          if(u==='FECHA')   ci.FEC=j; if(u==='T/C')     ci.TC=j;
+          if(u==='Q'||u==='ZONA') ci.ZON=j;
+        });
+        break;
+      }
+    }
+    if(h2Idx<0) return;
+
+    rows.slice(h2Idx+1).forEach(row=>{
+      if(!row) return;
+      const pago = String(row[ci.PAG]||'').trim().toUpperCase();
+      const cliente = String(row[ci.CLI]||'').trim();
+      if(!cliente || cliente==='' || cliente==='NULL') return;
+      const monto = parseFloat(String(row[ci.MON]||'').replace(/[^0-9.-]/g,''))||0;
+      if(monto<=0) return;
+
+      // Parse fecha
+      let fechaStr = '';
+      const fv = row[ci.FEC];
+      if(fv){ try{ const d=new Date(fv); if(!isNaN(d)) fechaStr=d.toISOString().split('T')[0]; }catch{fechaStr=String(fv);} }
+
+      allRows.push({
+        year, mesNum, mesNombre,
+        fecha: fechaStr,
+        reparto: parseInt(row[ci.REP])||0,
+        zona: String(row[ci.ZON]||'—').trim().toUpperCase(),
+        cliente,
+        monto,
+        tc: String(row[ci.TC]||'—').trim(),
+        pago: pago==='SI'?'Si':'No',
+      });
+    });
+  });
+}
+
+// ── MONTH TABS ────────────────────────────────────────────────────────────────
+
+
+// ── FILTER OPTIONS ────────────────────────────────────────────────────────────
+function buildFilterOptions(){
+  // Year selector
+  const years = [...new Set(allRows.map(r=>r.year))].sort((a,b)=>b-a);
+  const ySel  = document.getElementById('filter-year');
+  years.forEach(y=>{ const o=document.createElement('option'); o.value=y; o.textContent=y; ySel.appendChild(o); });
+  // Default to current year if available
+  const currentYear = new Date().getFullYear();
+  ySel.value = years.includes(currentYear) ? currentYear : (years[0]||'');
+
+  // Month selector
+  const mSel = document.getElementById('filter-month');
+  const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  MONTH_NAMES.forEach((m,i)=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; mSel.appendChild(o); });
+
+  // Default to current month
+  const currentMonth = MONTH_NAMES[new Date().getMonth()];
+  mSel.value = currentMonth;
+
+  // TC selector
+  const tcs   = [...new Set(allRows.map(r=>r.tc))].sort();
+  const tcSel = document.getElementById('filter-tc');
+  tcs.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; tcSel.appendChild(o); });
+}
+
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+function renderKPIs(){
+  const noRows  = allRows.filter(r=>r.pago==='No');
+  const siRows  = allRows.filter(r=>r.pago==='Si');
+  const totalRows = allRows.length;
+  const pctNo = totalRows>0 ? noRows.length/totalRows : 0;
+  const montoNo  = noRows.reduce((s,r)=>s+r.monto,0);
+  const montoSi  = siRows.reduce((s,r)=>s+r.monto,0);
+  const clientes = new Set(noRows.map(r=>r.cliente)).size;
+
+  document.getElementById('kpis').innerHTML = [
+    {l:'Sin transferencia', v:noRows.length,    s:`de ${totalRows} registros`, c:'var(--red)'},
+    {l:'Monto pendiente',   v:fmtM(montoNo),    s:`${(pctNo*100).toFixed(1)}% del total`, c:'var(--amber)'},
+    {l:'Transfirieron',     v:siRows.length,    s:`${fmtM(montoSi)} cobrado`, c:'var(--green)'},
+    {l:'Clientes únicos',   v:clientes,         s:'con deuda pendiente', c:'var(--purple)'},
+  ].map(k=>`<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val" style="color:${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+}
+
+// ── FILTERS + RENDER ──────────────────────────────────────────────────────────
+function applyFilters(){
+  const search  = document.getElementById('search').value.toLowerCase();
+  const tc      = document.getElementById('filter-tc').value;
+  const year    = document.getElementById('filter-year').value;
+  const month   = document.getElementById('filter-month').value;
+
+  const estado = document.getElementById('filter-estado').value;
+
+  filtered = allRows.filter(r=>{
+    if(estado && r.pago !== estado) return false;
+    if(year  && String(r.year)  !== year)  return false;
+    if(month && r.mesNombre     !== month) return false;
+    if(tc    && r.tc            !== tc)    return false;
+    if(search && !r.cliente.toLowerCase().includes(search) && !String(r.reparto).includes(search)) return false;
+    return true;
+  });
+
+  // Update filter summary label
+  const parts = [];
+  if(year)  parts.push(year);
+  if(month) parts.push(month);
+  const sumEl = document.getElementById('filter-summary');
+  if(sumEl) sumEl.textContent = parts.length ? parts.join(' · ') : 'Mostrando todos los períodos';
+
+  // Sort
+  filtered.sort((a,b)=>{
+    let va=a[sortCol], vb=b[sortCol];
+    if(typeof va==='string') va=va.toLowerCase(), vb=vb.toLowerCase();
+    return sortAsc ? (va>vb?1:-1) : (va<vb?1:-1);
+  });
+
+  renderTable();
+  const estadoLbl = document.getElementById('filter-estado').value;
+  const tblTitle = estadoLbl==='Si'?'Clientes que transfirieron':estadoLbl==='No'?'Clientes sin transferencia':'Todos los registros';
+  document.getElementById('tbl-title').textContent = `${tblTitle} — ${filtered.length} registros`;
+}
+
+// ── TABLE ─────────────────────────────────────────────────────────────────────
+function renderTable(){
+  const body = document.getElementById('tbl-body');
+  if(!filtered.length){
+    body.innerHTML = `<tr><td colspan="8" class="empty">✓ No hay clientes pendientes con los filtros seleccionados</td></tr>`;
+    document.getElementById('summary-bar').innerHTML = '';
+    return;
+  }
+
+  body.innerHTML = filtered.map(r=>{
+    const zColor = ZC[r.zona]||'#94A3B8';
+    return `<tr>
+      <td style="color:var(--text2);font-family:var(--mono)">${r.mesNombre} ${r.year}</td>
+      <td style="color:var(--text2);font-family:var(--mono)">${fmtDate(r.fecha)}</td>
+      <td style="font-family:var(--mono);color:var(--text2)">#${r.reparto}</td>
+      <td style="font-weight:600;color:var(--text)">${r.cliente}</td>
+      <td class="monto">${fmtM(r.monto)}</td>
+      <td style="color:var(--text3)">${r.tc}</td>
+      <td>${r.pago==='Si'?'<span class="pago-si">✓ Transfirió</span>':'<span class="pago-no">✗ No transfirió</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  const total   = filtered.reduce((s,r)=>s+r.monto,0);
+  const estadoV = document.getElementById('filter-estado').value;
+  const label   = estadoV==='Si'?'clientes que transfirieron':estadoV==='No'?'clientes pendientes':'registros';
+  const colorT  = estadoV==='Si'?'var(--green)':'var(--red)';
+  document.getElementById('summary-bar').innerHTML = `
+    <span><b>${filtered.length}</b> ${label}</span>
+    <span>Total: <b style="color:${colorT}">${fmtM(total)}</b></span>
+    <span>Promedio: <b>${fmtM(filtered.length>0?total/filtered.length:0)}</b></span>
+  `;
+}
+
+// ── SORT ─────────────────────────────────────────────────────────────────────
+function sortBy(col){
+  if(sortCol===col){ sortAsc=!sortAsc; } else { sortCol=col; sortAsc=true; }
+  document.querySelectorAll('th').forEach(th=>th.classList.remove('sorted'));
+  const th = document.getElementById('th-'+col);
+  if(th){ th.classList.add('sorted'); th.querySelector('.sort-icon').textContent = sortAsc ? '↑' : '↓'; }
+  applyFilters();
+}
+
+// ── EXPORT CSV ───────────────────────────────────────────────────────────────
+function exportCSV(){
+  const headers = ['Año','Mes','Fecha','Reparto','Cliente','Monto','Tipo','Estado'];
+  const rows = filtered.map(r=>[r.year,r.mesNombre,r.fecha,r.reparto,r.cliente,r.monto,r.tc,r.pago]);
+  const csv  = [headers,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href=url; a.download='clientes_pendientes.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+window.signIn=signIn; window.signOut=signOut; window.reloadDrive=reloadDrive;
+window.applyFilters=applyFilters;
+window.sortBy=sortBy; window.exportCSV=exportCSV;
+</script>
+</body>
+</html>
